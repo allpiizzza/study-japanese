@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>日本語ノート — 학습 기록</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="hanko">
+      <div class="d" id="dday">D-?</div>
+      <div class="label">N3</div>
+    </div>
+    <div class="eyebrow">Study Log</div>
+    <h1>日本語ノート</h1>
+    <div class="sub">매일 공부한 문법·단어·실수를 기록하는 개인 학습 일지 · JLPT N3 목표일 2026.12.06</div>
+
+    <div class="stats">
+      <div class="stat"><b id="stat-days">0</b>기록한 날</div>
+    </div>
+  </header>
+
+  <div class="cal-nav">
+    <button class="cal-btn" id="prevMonth">‹</button>
+    <div class="cal-month" id="calMonthLabel"></div>
+    <button class="cal-btn" id="nextMonth">›</button>
+  </div>
+  <div class="cal-grid" id="calDow"></div>
+  <div class="cal-grid" id="calGrid" style="margin-top:6px;"></div>
+  <div class="cal-legend"><span><span class="legend-dot"></span>기록 있는 날 (누르면 그 날 페이지로 이동)</span></div>
+  <div class="cal-status" id="calStatus"></div>
+
+</div>
+
+<script>
+  const DOW = ['일','월','화','수','목','금','토'];
+  const START_YEAR = 2026, START_MONTH = 8; // 2026년 8월부터
+  const END_YEAR = 2026, END_MONTH = 12;    // 시험일(12/6)이 있는 12월까지
+
+  const today = new Date();
+  today.setHours(0,0,0,0);
+
+  function fmt(d){
+    const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), day = String(d.getDate()).padStart(2,'0');
+    return `${y}-${m}-${day}`;
+  }
+
+  let viewYear = today.getFullYear() >= START_YEAR ? today.getFullYear() : START_YEAR;
+  let viewMonth = (viewYear === START_YEAR) ? Math.max(today.getMonth()+1, START_MONTH) : today.getMonth()+1;
+  if (viewYear > END_YEAR || (viewYear===END_YEAR && viewMonth > END_MONTH)) { viewYear = END_YEAR; viewMonth = END_MONTH; }
+
+  // ---- repo 파일 목록을 GitHub API로 읽어와서 yyyy-mm-dd.html 패턴만 추림 ----
+  let recordedDates = new Set();
+
+  function getRepoInfo(){
+    const host = location.hostname; // e.g. "username.github.io"
+    if(!host.endsWith('github.io')) return null;
+    const owner = host.split('.')[0];
+    const parts = location.pathname.split('/').filter(Boolean);
+    const repo = parts.length > 0 ? parts[0] : host; // project page vs user/organization root page
+    return { owner, repo };
+  }
+
+  async function loadRecordedDates(){
+    const info = getRepoInfo();
+    const statusEl = document.getElementById('calStatus');
+    if(!info){
+      statusEl.textContent = 'GitHub Pages에 올리면 기록된 날짜가 자동으로 표시돼.';
+      return;
+    }
+    try{
+      const res = await fetch(`https://api.github.com/repos/${info.owner}/${info.repo}/contents/`);
+      if(!res.ok) throw new Error('fetch failed');
+      const files = await res.json();
+      files.forEach(f=>{
+        const m = f.name.match(/^(\d{4}-\d{2}-\d{2})\.html$/);
+        if(m) recordedDates.add(m[1]);
+      });
+      statusEl.textContent = '';
+    }catch(err){
+      statusEl.textContent = '레포 파일 목록을 불러오지 못했어 (아직 비공개거나 API 제한일 수 있어).';
+    }
+    document.getElementById('stat-days').textContent = recordedDates.size;
+    renderCalendar();
+  }
+
+  function renderDow(){
+    document.getElementById('calDow').innerHTML = DOW.map(d => `<div class="cal-dow">${d}</div>`).join('');
+  }
+
+  function renderCalendar(){
+    document.getElementById('calMonthLabel').textContent = `${viewYear}년 ${viewMonth}월`;
+
+    const isStart = (viewYear === START_YEAR && viewMonth === START_MONTH);
+    const isEnd = (viewYear === END_YEAR && viewMonth === END_MONTH);
+    document.getElementById('prevMonth').disabled = isStart;
+    document.getElementById('nextMonth').disabled = isEnd;
+
+    const firstDay = new Date(viewYear, viewMonth-1, 1);
+    const startOffset = firstDay.getDay();
+    const daysInMonth = new Date(viewYear, viewMonth, 0).getDate();
+
+    let html = '';
+    for(let i=0;i<startOffset;i++){ html += `<div class="cal-cell empty"></div>`; }
+
+    for(let d=1; d<=daysInMonth; d++){
+      const dateObj = new Date(viewYear, viewMonth-1, d);
+      const dateStr = fmt(dateObj);
+      const hasEntry = recordedDates.has(dateStr);
+      const isToday = fmt(today) === dateStr;
+
+      if(hasEntry){
+        html += `<a class="cal-cell has-entry${isToday?' today':''}" href="${dateStr}.html">${d}</a>`;
+      } else {
+        html += `<div class="cal-cell${isToday?' today':''}">${d}</div>`;
+      }
+    }
+    document.getElementById('calGrid').innerHTML = html;
+  }
+
+  document.getElementById('prevMonth').addEventListener('click', ()=>{
+    viewMonth--;
+    if(viewMonth < 1){ viewMonth = 12; viewYear--; }
+    if(viewYear < START_YEAR || (viewYear===START_YEAR && viewMonth < START_MONTH)){ viewYear = START_YEAR; viewMonth = START_MONTH; }
+    renderCalendar();
+  });
+  document.getElementById('nextMonth').addEventListener('click', ()=>{
+    viewMonth++;
+    if(viewMonth > 12){ viewMonth = 1; viewYear++; }
+    if(viewYear > END_YEAR || (viewYear===END_YEAR && viewMonth > END_MONTH)){ viewYear = END_YEAR; viewMonth = END_MONTH; }
+    renderCalendar();
+  });
+
+  renderDow();
+  renderCalendar();
+  loadRecordedDates();
+
+  // D-day countdown to exam
+  const examDate = new Date("2026-12-06T00:00:00");
+  const diff = Math.ceil((examDate - today) / (1000*60*60*24));
+  document.getElementById('dday').textContent = diff >= 0 ? `D-${diff}` : `D+${-diff}`;
+</script>
+</body>
+</html>
